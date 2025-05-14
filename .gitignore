@@ -1,0 +1,7 @@
+*.*
+!bot.py
+!challonge_util.py
+!db_interactions.py
+!tetrio.py
+!.gitignore
+!README.md
