@@ -193,8 +193,12 @@ async def export_participants(guild_id : int, tournament_name : str) -> list[lis
 
 
 async def export_participants_if_in_set(guild_id : int, tournament_name : str, participant_list : set) -> list[list]:
+    args = [guild_id, tournament_name]
+    for i in participant_list:
+        args.append(i)
     cur = con.cursor()
-    res = cur.execute("SELECT discord_username FROM registration WHERE server_id = ? AND tournament_name = ? AND discord_username in ? ORDER BY rating DESC",(guild_id,tournament_name,participant_list))
+    print(args)
+    res = cur.execute("SELECT discord_username FROM registration WHERE server_id = ? AND tournament_name = ? AND discord_id IN (%s) ORDER BY rating DESC" % ("?," * len(participant_list))[:-1],args)
     col = [desc[0] for desc in cur.description]
     data = res.fetchall()
     data = [col] + data

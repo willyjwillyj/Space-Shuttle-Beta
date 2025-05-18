@@ -477,7 +477,8 @@ async def get_checkins(itx : discord.Interaction, tournament_name : str, checkin
     for i in reactions:
         users = [ user async for user in i.users() ]
         for ii in users:
-            checkin_ids.add(ii)
+            print(ii.id)
+            checkin_ids.add(ii.id)
     data = await db.export_participants_if_in_set(itx.guild.id, tournament_name, checkin_ids)
     if not os.path.isdir(f"{itx.guild.id}"):
         os.mkdir(f"{itx.guild.id}")
