@@ -7,6 +7,7 @@ import requests
 from discord.app_commands import checks 
 from discord.ext.commands import has_permissions
 
+import time
 import csv
 import os
 from dotenv import load_dotenv
@@ -230,7 +231,6 @@ async def get_tournaments(itx : discord.Interaction):
         os.mkdir(f"{itx.guild.id}")
     with open(f"{itx.guild.id}/tournaments.csv","w",newline='') as f:
         writer = csv.writer(f)
-        
         writer.writerows(tours)
     await itx.response.send_message("Tournaments in this server:", file=discord.File(f"{itx.guild.id}/tournaments.csv"))
 
@@ -333,7 +333,7 @@ async def update_tournament_status(guild_id : int):
     tournaments = await db.get_open_tournaments(guild_id)
     content = "### Current Open Tournaments:\n"
     for i in tournaments:
-        participant_count = await db.get_participant_count(i)
+        participant_count = await db.get_participant_count(guild_id,i)
         content += F"{i} - {participant_count} Registrations\n"
     await message.edit(content=content)
 
@@ -343,7 +343,7 @@ async def update_tournament_status(guild_id : int):
 )
 @has_permissions(manage_roles=True)
 async def link_bracket(itx : discord.Interaction, bracket_url_string : str, tournament_name : str):
-    pass
+    await itx.response.send_message("This feature has not been implemented yet. The developer estimates this feature will be ready in late June",ephemeral=True)
 
 @tree.command(
         name="unlink_bracket",
@@ -351,7 +351,7 @@ async def link_bracket(itx : discord.Interaction, bracket_url_string : str, tour
 )
 @has_permissions(manage_roles=True)
 async def unlink_bracket(itx : discord.Interaction, bracket_url_string : str, tournament_name : str):
-    pass
+    await itx.response.send_message("This feature has not been implemented yet. The developer estimates this feature will be ready in late June",ephemeral=True)
 
 @tree.command(
         name="list_brackets",
@@ -359,7 +359,7 @@ async def unlink_bracket(itx : discord.Interaction, bracket_url_string : str, to
 )
 @has_permissions(manage_roles=True)
 async def list_brackets(itx : discord.Interaction):
-    pass
+    await itx.response.send_message("This feature has not been implemented yet. The developer estimates this feature will be ready in late June",ephemeral=True)
 
 @tree.command(
         name="activate_bracket",
@@ -367,7 +367,7 @@ async def list_brackets(itx : discord.Interaction):
 )
 @has_permissions(manage_roles=True)
 async def activate_bracket(itx : discord.Interaction, bracket_url_string : str):
-    pass
+    await itx.response.send_message("This feature has not been implemented yet. The developer estimates this feature will be ready in late June",ephemeral=True)
 
 @tree.command(
         name="deactivate_bracket",
@@ -375,7 +375,7 @@ async def activate_bracket(itx : discord.Interaction, bracket_url_string : str):
 )
 @has_permissions(manage_roles=True)
 async def deactivate_bracket(itx : discord.Interaction, bracket_url_string : str):
-    pass
+    await itx.response.send_message("This feature has not been implemented yet. The developer estimates this feature will be ready in late June",ephemeral=True)
 
 @tree.command(
         name="export_participants",
@@ -383,15 +383,27 @@ async def deactivate_bracket(itx : discord.Interaction, bracket_url_string : str
 )
 @has_permissions(manage_roles=True)
 async def export_participants(itx : discord.Interaction, tournament_name : str):
-    pass
+    participants = await db.export_participants_full(itx.guild.id, tournament_name)
+    if not os.path.isdir(f"{itx.guild.id}"):
+        os.mkdir(f"{itx.guild.id}")
+    with open(f"{itx.guild.id}/participants.csv","w",newline='') as f:
+        writer = csv.writer(f)
+        writer.writerows(participants)
+    await itx.response.send_message(f"exporting players in {tournament_name}", file=discord.File(f"{itx.guild.id}/participants.csv"))
 
 @tree.command(
         name="export_seeding_list",
-        description="Export participants from a tournament, sorted by rating.",
+        description="Export participants from a tournament, sorted by rating. Good for importing into a bracket website",
 )
 @has_permissions(manage_roles=True)
 async def export_seeding(itx : discord.Interaction, tournament_name : str):
-    pass
+    participants = await db.export_participants(itx.guild.id, tournament_name)
+    if not os.path.isdir(f"{itx.guild.id}"):
+        os.mkdir(f"{itx.guild.id}")
+    with open(f"{itx.guild.id}/participants.csv","w",newline='') as f:
+        writer = csv.writer(f)
+        writer.writerows(participants)
+    await itx.response.send_message(f"exporting players in {tournament_name}", file=discord.File(f"{itx.guild.id}/participants.csv"))
 
 @tree.command(
         name="refresh_seeding_tetrio",
@@ -399,15 +411,80 @@ async def export_seeding(itx : discord.Interaction, tournament_name : str):
 )
 @has_permissions(manage_roles=True)
 async def update_seeding_tetrio(itx : discord.Interaction, tournament_name : str, remove_ineligible : bool=True):
-    pass
-
+    participants = await db.get_game_users_from_tournament(itx.guild.id,tournament_name)
+    response = await itx.response.send_message(f"Updating Player 0 of {len(participants)}")
+    for i in range(len(participants)):
+        time.sleep(1)
+        await itx.followup.edit_message(response.message_id,content=f"Updating Player {i+1} of {len(participants)}")
+        t_data = await tetrio.get_player_data(participants[i])
+        if t_data["success"] == False:
+            if t_data["error"]["msg"] == "No such user! | Either you mistyped something, or the account no longer exists.":
+                continue
+            else:
+                continue
+        elif t_data["data"]["tr"] == -1:
+            continue
+        elif not remove_ineligible:
+            await db.update_rating(itx.guild.id, tournament_name, participants[i], t_data["data"]["tr"])
+            continue
+        else:
+            caps = await db.get_floor_and_cap(itx.guild.id, tournament_name)
+            if (caps[0] is not None or caps[1] is not None):
+                if t_data["data"]["rank"] == "z":
+                    player_data = await db.get_discord_user_from_game_username(itx.guild.id, tournament_name,participants[i])
+                    await itx.followup.send(f"Player <@{player_data[0]}> ({player_data[0]}) was removed from the tournament due to ineligibility (unranked)")
+                    role = await db.get_tournament_role(itx.guild.id, tournament_name)
+                    await remove_role(itx.guild.id, itx.user.id, role)
+                    await db.remove_from_tournament(itx.guild.id, player_data[0], tournament_name)
+                    await update_tournament_status(itx.guild.id)
+                else:
+                    peak_rank = tetrio.ranks[t_data["data"]["bestrank"]]
+                    if t_data["data"]["past"] is not None:
+                        for ii in t_data["data"]["past"]:
+                            if t_data["data"]["past"][ii]["bestrank"] is not None:
+                                peak_rank = min(peak_rank, tetrio.ranks[t_data["data"]["past"][ii]["bestrank"]])
+                    if(caps[0] is not None and peak_rank > tetrio.ranks[caps[0]]):
+                        player_data = await db.get_discord_user_from_game_username(itx.guild.id, tournament_name,participants[i])
+                        await itx.followup.send(f"Player <@{player_data[0]}> ({player_data[0]}) was removed from the tournament due to ineligibility (below rank floor)")
+                        role = await db.get_tournament_role(itx.guild.id, tournament_name)
+                        await remove_role(itx.guild.id, itx.user.id, role)
+                        await db.remove_from_tournament(itx.guild.id, player_data[0], tournament_name)
+                        await update_tournament_status(itx.guild.id)
+                    elif(caps[1] is not None and peak_rank < tetrio.ranks[caps[1]]):
+                        player_data = await db.get_discord_user_from_game_username(itx.guild.id, tournament_name,participants[i])
+                        await itx.followup.send(f"Player <@{player_data[0]}> ({player_data[0]}) was removed from the tournament due to ineligibility (above rank cap)")
+                        role = await db.get_tournament_role(itx.guild.id, tournament_name)
+                        await remove_role(itx.guild.id, itx.user.id, role)
+                        await db.remove_from_tournament(itx.guild.id, player_data[0], tournament_name)
+                        await update_tournament_status(itx.guild.id)
+                    else:
+                        await db.update_rating(itx.guild.id, tournament_name, participants[i], t_data["data"]["tr"])
+    await itx.followup.edit_message(response.message_id,content=f"Finished updating player ratings")
+                    
 @tree.command(
         name="get_checkins",
-        description="get a list of checked in players ",
+        description="get a list of checked in players. Good for importing into a bracket website ",
 )
 @has_permissions(manage_roles=True)
 async def get_checkins(itx : discord.Interaction, tournament_name : str, checkin_channel : discord.TextChannel, checkin_message : int):
-    pass
+    message = await checkin_channel.fetch_message(checkin_message)
+    if message is None:
+        itx.response.send_message("Error in finding message, checkin message appears to be invalid")
+        return
+    reactions = message.reactions
+    checkin_ids = set()
+    for i in reactions:
+        users = [ user async for user in i.users() ]
+        for ii in users:
+            checkin_ids.add(ii)
+    data = await db.export_participants_if_in_set(itx.guild.id, tournament_name, checkin_ids)
+    if not os.path.isdir(f"{itx.guild.id}"):
+        os.mkdir(f"{itx.guild.id}")
+    with open(f"{itx.guild.id}/checkin.csv","w",newline='') as f:
+        writer = csv.writer(f)
+        writer.writerows(data)
+    await itx.response.send_message(f"exporting checked in players in {tournament_name}", file=discord.File(f"{itx.guild.id}/checkin.csv"))
+
 
 @tree.command(
         name="view_player_counts",
@@ -415,11 +492,100 @@ async def get_checkins(itx : discord.Interaction, tournament_name : str, checkin
 )
 @has_permissions(manage_roles=True)
 async def get_player_counts(itx : discord.Interaction):
-    pass
+    counts = await db.get_participant_counts(itx.guild.id)
+    if not os.path.isdir(f"{itx.guild.id}"):
+        os.mkdir(f"{itx.guild.id}")
+    with open(f"{itx.guild.id}/participant_counts.csv","w",newline='') as f:
+        writer = csv.writer(f)
+        writer.writerows(counts)
+    await itx.response.send_message("Player counts for tournaments in this server:", file=discord.File(f"{itx.guild.id}/participant_counts.csv"))
+
+@tree.command(
+        name="manual_register",
+        description="Manually register a player to your tournament.",
+)
+@has_permissions(manage_roles=True)
+async def manual_register(itx : discord.Interaction, tournament_name : str, player : discord.User, registration_input : str, override_requirements : bool=False):
+    player_id = player.id
+    input = registration_input
+    is_tetrio = await db.is_tournament_tetrio(itx.guild.id, tournament_name)
+    username = player.name
+    
+    if username is None:
+        itx.response.send_message("Error: invalid player ID set")
+        return
+    truth = await db.check_if_tournament_exists(tournament_name,itx.guild.id)
+    if not truth: 
+        await itx.response.send_message("Error: Tournament does not exist")
+        return
+    truth = await db.check_if_player_registered_for_tournament(itx.guild.id,player.id,tournament_name)
+    if truth: 
+        await itx.response.send_message("Error: Player already registered for tournament")
+        return
+    if not is_tetrio:
+        await db.insert_into_tournament(player_id,username,itx.guild.id,tournament_name,input)
+        role = await db.get_tournament_role(itx.guild.id, tournament_name)
+        await add_role(itx.guild.id, player_id, role)
+        await itx.response.send_message(f"Successfully registered {player.name} for {tournament_name} with rating {input}",ephemeral=True)
+        await log(itx.guild.id,f"Player {player.name} manually registered for {tournament_name} with rating {input}")
+        await update_tournament_status(itx.guild_id)
+    else: 
+        t_data = await tetrio.get_player_data(input)
+        if t_data["success"] == False:
+            if t_data["error"]["msg"] == "No such user! | Either you mistyped something, or the account no longer exists.":
+                await itx.response.send_message("Registration Failed: No such user! | Either you mistyped something, or the account no longer exists.", ephemeral=True)
+            else:
+                await itx.response.send_message("Registration Failed: An unknown error occured. Please contact staff", ephemeral=True)
+        elif override_requirements:
+            username = await tetrio.get_player_id(input)
+            rating = t_data["data"]["tr"]
+            await db.insert_into_tournament(player_id,username,itx.guild.id,tournament_name,rating,username)
+            await itx.response.send_message(f"Successfully manually registered {player.name} for {tournament_name} under username {input}")
+            role = await db.get_tournament_role(itx.guild.id, tournament_name)
+            await add_role(itx.guild.id, player_id, role)
+            await log(itx.guild.id,f"Player {player.name} registered for {tournament_name} under username {input} with rating {rating}")
+            await update_tournament_status(itx.guild_id)
+        elif t_data["data"]["tr"] == -1:
+            await itx.response.send_message("Registration Failed: They must have a TR on TETR.IO to register for the tournament", ephemeral=True)
+        else:
+            caps = await db.get_floor_and_cap(itx.guild.id, tournament_name)
+            if (caps[0] is not None or caps[1] is not None):
+                if t_data["data"]["rank"] == "z":
+                    await itx.response.send_message("Registration Failed: They must have a letter rank in order to play in a capped or floored tournament", ephemeral=True)
+                else:
+                    peak_rank = tetrio.ranks[t_data["data"]["bestrank"]]
+                    if t_data["data"]["past"] is not None:
+                        for i in t_data["data"]["past"]:
+                            if t_data["data"]["past"][i]["bestrank"] is not None:
+                                peak_rank = min(peak_rank, tetrio.ranks[t_data["data"]["past"][i]["bestrank"]])
+                    if(caps[0] is not None and peak_rank > tetrio.ranks[caps[0]]):
+                        await itx.response.send_message("Registration Failed. Their peak rank is too low to play in this tournament")
+                    elif(caps[1] is not None and peak_rank < tetrio.ranks[caps[1]]):
+                        await itx.response.send_message("Registration Failed. Their peak rank is too high to play in this tournament")
+                    else:
+                        username = await tetrio.get_player_id(input)
+                        rating = t_data["data"]["tr"]
+                        print(player)
+                        await db.insert_into_tournament(player_id,player.name,itx.guild.id,tournament_name,rating,username)
+                        await itx.response.send_message(f"Successfully manually registered {player.name} for {tournament_name} under username {input}")
+                        role = await db.get_tournament_role(itx.guild.id, tournament_name)
+                        await add_role(itx.guild.id, player_id, role)
+                        await log(itx.guild.id,f"Player {player.name} registered for {tournament_name} under username {input} with rating {rating}")
+                        await update_tournament_status(itx.guild_id)
 
 
-
-
+@tree.command(
+        name="manual_unregister",
+        description="Manually unregister a player to your tournament.",
+)
+@has_permissions(manage_roles=True)
+async def manual_unregister(itx : discord.Interaction, tournament_name : str, player : discord.User):
+    player_id = player.id
+    await db.remove_from_tournament(itx.guild.id,player_id,tournament_name)
+    await itx.response.send_message(content=f"Removed registration from {tournament_name} from <@{player_id}> if they were registered")
+    await update_tournament_status(itx.guild_id)
+    role = await db.get_tournament_role(itx.guild.id, tournament_name)
+    await remove_role(itx.guild.id, itx.user.id, role)
 
 
 

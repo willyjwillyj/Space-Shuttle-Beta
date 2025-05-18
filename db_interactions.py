@@ -98,6 +98,8 @@ async def is_tournament_tetrio(guild_id : int, tournament_name : str) -> bool:
     res = cur.execute("SELECT is_tetrio FROM tournament WHERE server_id = ? AND tournament_name = ?",(guild_id,tournament_name))
     data = res.fetchall()
     cur.close()
+    if len(data) == 0:
+        return False
     return data[0][0]
 
 async def get_logging_channel(guild_id : int) -> int:
@@ -154,9 +156,68 @@ async def get_guilds() -> list[int]:
         out.append(i[0])
     return out
 
-async def get_participant_count(tournament_name : str) -> int:
+async def get_participant_count(guild_id : int, tournament_name : str) -> int:
     cur = con.cursor()
-    res = cur.execute("SELECT COUNT(*) FROM registration WHERE tournament_name = ?",(tournament_name,))
+    res = cur.execute("SELECT COUNT(*) FROM registration WHERE tournament_name = ? AND server_id = ?",(tournament_name,guild_id))
     data = res.fetchall()
     cur.close()
     return data[0][0]
+
+async def get_participant_counts(guild_id : int) -> list[list]:
+    cur = con.cursor()
+    res = cur.execute("SELECT COUNT(*) AS player_count, tournament_name FROM registration WHERE server_id = ? GROUP BY tournament_name ORDER BY timestamp DESC",(guild_id,))
+    col = [desc[0] for desc in cur.description]
+    data = res.fetchall()
+    data = [col] + data
+    cur.close()
+    return data
+
+async def export_participants_full(guild_id : int, tournament_name : str) -> list[list]:
+    cur = con.cursor()
+    res = cur.execute("SELECT * FROM registration WHERE server_id = ? AND tournament_name = ? ORDER BY rating DESC",(guild_id,tournament_name))
+    col = [desc[0] for desc in cur.description]
+    data = res.fetchall()
+    data = [col] + data
+    cur.close()
+    return data
+
+
+async def export_participants(guild_id : int, tournament_name : str) -> list[list]:
+    cur = con.cursor()
+    res = cur.execute("SELECT discord_username FROM registration WHERE server_id = ? AND tournament_name = ? ORDER BY rating DESC",(guild_id,tournament_name))
+    col = [desc[0] for desc in cur.description]
+    data = res.fetchall()
+    data = [col] + data
+    cur.close()
+    return data
+
+
+async def export_participants_if_in_set(guild_id : int, tournament_name : str, participant_list : set) -> list[list]:
+    cur = con.cursor()
+    res = cur.execute("SELECT discord_username FROM registration WHERE server_id = ? AND tournament_name = ? AND discord_username in ? ORDER BY rating DESC",(guild_id,tournament_name,participant_list))
+    col = [desc[0] for desc in cur.description]
+    data = res.fetchall()
+    data = [col] + data
+    cur.close()
+    return data
+
+
+async def update_rating(guild_id : int, tournament_name : str, game_username : str, new_rating : float) -> None:
+    cur = con.cursor()
+    cur.execute("UPDATE registration SET rating = ? WHERE server_id = ? AND tournament_name = ? AND game_username = ?", (new_rating,guild_id,tournament_name,game_username))
+    cur.close()
+
+async def get_game_users_from_tournament(guild_id : int, tournament_name : str) -> list[str]:
+    cur = con.cursor()
+    res = cur.execute("SELECT game_username FROM registration WHERE server_id = ? AND tournament_name = ?",(guild_id,tournament_name))
+    data = res.fetchall()
+    ret = []
+    for i in data:
+        ret.append(i[0])
+    return ret
+
+async def get_discord_user_from_game_username(guild_id : int, tournament_name : str, game_username : str) -> list[int, str]:
+    cur = con.cursor()
+    res = cur.execute("SELECT discord_id, discord_username FROM registration WHERE server_id = ? AND tournament_name = ? AND game_username = ?",(guild_id,tournament_name,game_username))
+    data = res.fetchall()
+    return data[0]
