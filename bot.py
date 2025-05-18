@@ -466,7 +466,8 @@ async def update_seeding_tetrio(itx : discord.Interaction, tournament_name : str
         description="get a list of checked in players. Good for importing into a bracket website ",
 )
 @has_permissions(manage_roles=True)
-async def get_checkins(itx : discord.Interaction, tournament_name : str, checkin_channel : discord.TextChannel, checkin_message : int):
+async def get_checkins(itx : discord.Interaction, tournament_name : str, checkin_channel : discord.TextChannel, checkin_message : str):
+    checkin_message = int(checkin_message)
     message = await checkin_channel.fetch_message(checkin_message)
     if message is None:
         itx.response.send_message("Error in finding message, checkin message appears to be invalid")
